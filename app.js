@@ -62,6 +62,33 @@ let selectedDate = null;
 let selectedType = null;
 let selectedTimes = new Set();
 
+// ─── Supabase Backend ─────────────────────────────────────────────────────────
+const supabaseUrl = 'https://uzgnotuiqqnxjuskfwbc.supabase.co';
+const supabaseKey = 'sb_publishable_O8aDLALblRWIbX-fNrH4-A_fyqVlEWr';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+let localBusyDates = [];
+let localBusyRanges = [];
+let localBookings = [];
+
+async function fetchAllData() {
+  try {
+    const [bdRes, brRes, bkRes] = await Promise.all([
+      supabase.from('busy_dates').select('*'),
+      supabase.from('busy_ranges').select('*'),
+      supabase.from('bookings').select('*')
+    ]);
+    if (bdRes.data) localBusyDates = bdRes.data;
+    if (brRes.data) localBusyRanges = brRes.data.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, label: r.label }));
+    if (bkRes.data) localBookings = bkRes.data.map(b => ({
+      ...b,
+      times: b.times
+    }));
+  } catch (err) {
+    console.error('Error fetching from DB', err);
+  }
+}
+
 // ─── Storage Helpers ──────────────────────────────────────────────────────────
 function getPassword() {
   return localStorage.getItem('appt_password') || DEFAULT_PASSWORD;
@@ -69,18 +96,11 @@ function getPassword() {
 function setPassword(pw) {
   localStorage.setItem('appt_password', pw);
 }
-function getBusyDates() {
-  return JSON.parse(localStorage.getItem('appt_busy') || '[]');
-}
-function saveBusyDates(arr) {
-  localStorage.setItem('appt_busy', JSON.stringify(arr));
-}
-function getBusyRanges() {
-  return JSON.parse(localStorage.getItem('appt_busy_ranges') || '[]');
-}
-function saveBusyRanges(arr) {
-  localStorage.setItem('appt_busy_ranges', JSON.stringify(arr));
-}
+
+function getBusyDates() { return localBusyDates; }
+function getBusyRanges() { return localBusyRanges; }
+function getBookings() { return localBookings; }
+
 // 범위를 개별 날짜 문자열 Set으로 확장
 function expandRanges() {
   const set = new Set();
@@ -93,12 +113,6 @@ function expandRanges() {
     }
   });
   return set;
-}
-function getBookings() {
-  return JSON.parse(localStorage.getItem('appt_bookings') || '[]');
-}
-function saveBookings(arr) {
-  localStorage.setItem('appt_bookings', JSON.stringify(arr));
 }
 
 // ─── Date Helpers ─────────────────────────────────────────────────────────────
@@ -302,9 +316,8 @@ function submitBooking() {
     createdAt: new Date().toISOString(),
   };
 
-  const bookings = getBookings();
-  bookings.push(booking);
-  saveBookings(bookings);
+  localBookings.push(booking);
+  supabase.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
 
   closeBookingModal();
   renderCalendar();
@@ -423,13 +436,14 @@ function addBusyDate() {
 
   if (!dateVal) { showToast('날짜를 선택해주세요!', true); return; }
 
-  const busy = getBusyDates();
-  if (busy.find(b => b.date === dateVal)) {
+  if (localBusyDates.find(b => b.date === dateVal)) {
     showToast('이미 등록된 날이에요!', true); return;
   }
 
-  busy.push({ date: dateVal, label });
-  saveBusyDates(busy);
+  const newRow = { date: dateVal, label };
+  localBusyDates.push(newRow);
+  supabase.from('busy_dates').insert(newRow).then();
+  
   document.getElementById('busyDateInput').value = '';
   document.getElementById('busyLabelInput').value = '';
   renderBusyList();
@@ -445,9 +459,10 @@ function addBusyRange() {
   if (!start || !end) { showToast('시작일과 종료일을 모두 선택해주세요!', true); return; }
   if (start > end)    { showToast('종료일이 시작일보다 빨라요!', true); return; }
 
-  const ranges = getBusyRanges();
-  ranges.push({ id: Date.now().toString(), start, end, label });
-  saveBusyRanges(ranges);
+  const id = Date.now().toString();
+  localBusyRanges.push({ id, start, end, label });
+  supabase.from('busy_ranges').insert({ id, start_date: start, end_date: end, label }).then();
+  
   document.getElementById('busyRangeStart').value = '';
   document.getElementById('busyRangeEnd').value = '';
   document.getElementById('busyRangeLabel').value = '';
@@ -457,15 +472,16 @@ function addBusyRange() {
 }
 
 function removeBusyRange(id) {
-  saveBusyRanges(getBusyRanges().filter(r => r.id !== id));
+  localBusyRanges = localBusyRanges.filter(r => r.id !== id);
+  supabase.from('busy_ranges').delete().eq('id', id).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
 }
 
 function removeBusyDate(date) {
-  const busy = getBusyDates().filter(b => b.date !== date);
-  saveBusyDates(busy);
+  localBusyDates = localBusyDates.filter(b => b.date !== date);
+  supabase.from('busy_dates').delete().eq('date', date).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
@@ -524,25 +540,28 @@ function renderAdminBookings() {
 }
 
 function removeBooking(id) {
-  const bookings = getBookings().filter(b => b.id !== id);
-  saveBookings(bookings);
+  localBookings = localBookings.filter(b => b.id !== id);
+  supabase.from('bookings').delete().eq('id', id).then();
   renderAdminBookings();
   renderCalendar();
   showToast('일정이 삭제됐어요');
 }
 
 function acceptBooking(id) {
-  const bookings = getBookings().map(b => b.id === id ? { ...b, status: 'accepted' } : b);
-  saveBookings(bookings);
+  const b = localBookings.find(x => x.id === id);
+  if (b) {
+    b.status = 'accepted';
+    supabase.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
+  }
   renderAdminBookings();
   renderCalendar();
   showToast('✅ 예약을 수락했어요!');
 }
 
 function rejectBooking(id) {
-  // 거절 시 사실상 삭제되도록 (대기/확정 목록에서 숨김 처리 방지 목적)
-  const bookings = getBookings().filter(b => b.id !== id);
-  saveBookings(bookings);
+  // 거절 시 완전히 삭제
+  localBookings = localBookings.filter(b => b.id !== id);
+  supabase.from('bookings').delete().eq('id', id).then();
   renderAdminBookings();
   renderCalendar();
   showToast('❌ 예약을 거절(삭제)했어요');
@@ -559,11 +578,14 @@ function changePassword() {
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Init current month
   const now = new Date();
   currentYear = now.getFullYear();
   currentMonth = now.getMonth();
+
+  // 최초 로딩 시 디비 긁어오기
+  await fetchAllData();
 
   renderCalendar();
 
