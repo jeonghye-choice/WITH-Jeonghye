@@ -74,19 +74,23 @@ let localBookings = [];
 async function fetchAllData() {
   if (!supabase) return;
   try {
-    const [bdRes, brRes, bkRes] = await Promise.all([
+    const fetchPromises = Promise.all([
       supabase.from('busy_dates').select('*'),
       supabase.from('busy_ranges').select('*'),
       supabase.from('bookings').select('*')
     ]);
-    if (bdRes.data) localBusyDates = bdRes.data;
-    if (brRes.data) localBusyRanges = brRes.data.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, label: r.label }));
-    if (bkRes.data) localBookings = bkRes.data.map(b => ({
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 4000));
+    
+    const [bdRes, brRes, bkRes] = await Promise.race([fetchPromises, timeoutPromise]);
+
+    if (bdRes && bdRes.data) localBusyDates = bdRes.data;
+    if (brRes && brRes.data) localBusyRanges = brRes.data.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, label: r.label }));
+    if (bkRes && bkRes.data) localBookings = bkRes.data.map(b => ({
       ...b,
       times: b.times
     }));
   } catch (err) {
-    console.error('Error fetching from DB', err);
+    console.error('Error fetching from DB:', err);
   }
 }
 
@@ -579,7 +583,7 @@ function changePassword() {
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', async () => {
+async function initApp() {
   // Init current month
   const now = new Date();
   currentYear = now.getFullYear();
@@ -588,7 +592,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 최초 로딩 시 디비 긁어오기
   await fetchAllData();
 
-  renderCalendar();
+  try {
+    renderCalendar();
+  } catch (e) {
+    console.error('Render Calendar Error:', e);
+  }
 
   document.getElementById('successCloseBtn').addEventListener('click', closeSuccessModal);
   document.getElementById('successOverlay').addEventListener('click', e => {
@@ -597,8 +605,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Month nav
   document.getElementById('prevMonthBtn').addEventListener('click', () => {
-    const now = new Date();
-    if (currentYear === now.getFullYear() && currentMonth === now.getMonth()) return;
+    const nowLocal = new Date();
+    if (currentYear === nowLocal.getFullYear() && currentMonth === nowLocal.getMonth()) return;
     currentMonth--;
     if (currentMonth < 0) { currentMonth = 11; currentYear--; }
     renderCalendar();
@@ -649,4 +657,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('addBusyBtn').addEventListener('click', addBusyDate);
   document.getElementById('addBusyRangeBtn').addEventListener('click', addBusyRange);
   document.getElementById('changePwBtn').addEventListener('click', changePassword);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
