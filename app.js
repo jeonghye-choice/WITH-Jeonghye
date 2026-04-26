@@ -65,13 +65,14 @@ let selectedTimes = new Set();
 // ─── Supabase Backend ─────────────────────────────────────────────────────────
 const supabaseUrl = 'https://uzgnotuiqqnxjuskfwbc.supabase.co';
 const supabaseKey = 'sb_publishable_O8aDLALblRWIbX-fNrH4-A_fyqVlEWr';
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const supabase = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
 
 let localBusyDates = [];
 let localBusyRanges = [];
 let localBookings = [];
 
 async function fetchAllData() {
+  if (!supabase) return;
   try {
     const [bdRes, brRes, bkRes] = await Promise.all([
       supabase.from('busy_dates').select('*'),
@@ -317,7 +318,7 @@ function submitBooking() {
   };
 
   localBookings.push(booking);
-  supabase.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
+  if (supabase) supabase.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
 
   closeBookingModal();
   renderCalendar();
@@ -442,7 +443,7 @@ function addBusyDate() {
 
   const newRow = { date: dateVal, label };
   localBusyDates.push(newRow);
-  supabase.from('busy_dates').insert(newRow).then();
+  if (supabase) supabase.from('busy_dates').insert(newRow).then();
   
   document.getElementById('busyDateInput').value = '';
   document.getElementById('busyLabelInput').value = '';
@@ -461,7 +462,7 @@ function addBusyRange() {
 
   const id = Date.now().toString();
   localBusyRanges.push({ id, start, end, label });
-  supabase.from('busy_ranges').insert({ id, start_date: start, end_date: end, label }).then();
+  if (supabase) supabase.from('busy_ranges').insert({ id, start_date: start, end_date: end, label }).then();
   
   document.getElementById('busyRangeStart').value = '';
   document.getElementById('busyRangeEnd').value = '';
@@ -473,7 +474,7 @@ function addBusyRange() {
 
 function removeBusyRange(id) {
   localBusyRanges = localBusyRanges.filter(r => r.id !== id);
-  supabase.from('busy_ranges').delete().eq('id', id).then();
+  if (supabase) supabase.from('busy_ranges').delete().eq('id', id).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
@@ -481,7 +482,7 @@ function removeBusyRange(id) {
 
 function removeBusyDate(date) {
   localBusyDates = localBusyDates.filter(b => b.date !== date);
-  supabase.from('busy_dates').delete().eq('date', date).then();
+  if (supabase) supabase.from('busy_dates').delete().eq('date', date).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
@@ -541,7 +542,7 @@ function renderAdminBookings() {
 
 function removeBooking(id) {
   localBookings = localBookings.filter(b => b.id !== id);
-  supabase.from('bookings').delete().eq('id', id).then();
+  if (supabase) supabase.from('bookings').delete().eq('id', id).then();
   renderAdminBookings();
   renderCalendar();
   showToast('일정이 삭제됐어요');
@@ -551,7 +552,7 @@ function acceptBooking(id) {
   const b = localBookings.find(x => x.id === id);
   if (b) {
     b.status = 'accepted';
-    supabase.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
+    if (supabase) supabase.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
   }
   renderAdminBookings();
   renderCalendar();
@@ -561,7 +562,7 @@ function acceptBooking(id) {
 function rejectBooking(id) {
   // 거절 시 완전히 삭제
   localBookings = localBookings.filter(b => b.id !== id);
-  supabase.from('bookings').delete().eq('id', id).then();
+  if (supabase) supabase.from('bookings').delete().eq('id', id).then();
   renderAdminBookings();
   renderCalendar();
   showToast('❌ 예약을 거절(삭제)했어요');
