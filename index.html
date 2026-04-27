@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -131,6 +132,10 @@
       <!-- Name -->
       <div class="section-label">이름</div>
       <input class="text-input" id="nameInput" type="text" placeholder="이름을 입력하세요" maxlength="20" />
+
+      <!-- Email -->
+      <div class="section-label">이메일 <span class="optional">(수락/거절 알림 받기)</span></div>
+      <input class="text-input" id="emailInput" type="email" placeholder="example@email.com" />
 
       <!-- Note -->
       <div class="section-label">한마디 <span class="optional">(선택)</span></div>

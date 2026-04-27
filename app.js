@@ -9,6 +9,17 @@ const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTHS_KO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
 const DEFAULT_PASSWORD = '1234';
 
+// ─── EmailJS ──────────────────────────────────────────────────────────────────
+// TODO: EmailJS 설정 후 아래 값을 교체하세요
+const EMAILJS_PUBLIC_KEY  = 'SWbIJNY5pA6zjUyug';
+const EMAILJS_SERVICE_ID  = 'service_p4bwnzf';
+const EMAILJS_TEMPLATE_ID = 'template_58pjo7q';
+
+if (typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY') {
+  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  console.log('✅ EmailJS initialized');
+}
+
 const TIME_SLOTS = [
   '오전 9:00','오전 9:30','오전 10:00','오전 10:30',
   '오전 11:00','오전 11:30','오후 12:00','오후 12:30',
@@ -300,6 +311,7 @@ function openBookingModal(dateStr) {
 
   // Reset inputs
   document.getElementById('nameInput').value = '';
+  document.getElementById('emailInput').value = '';
   document.getElementById('noteInput').value = '';
 
   document.getElementById('bookingOverlay').classList.remove('hidden');
@@ -315,6 +327,7 @@ function closeBookingModal() {
 // ─── Submit Booking ───────────────────────────────────────────────────────────
 function submitBooking() {
   const name = document.getElementById('nameInput').value.trim();
+  const email = document.getElementById('emailInput').value.trim();
   const note = document.getElementById('noteInput').value.trim();
 
   let finalType = selectedType;
@@ -336,6 +349,7 @@ function submitBooking() {
     times: timesArr,
     type: finalType,
     name,
+    email,
     note,
     status: 'pending',
     createdAt: new Date().toISOString(),
@@ -588,6 +602,8 @@ function acceptBooking(id) {
   if (b) {
     b.status = 'accepted';
     if (supabaseClient) supabaseClient.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
+    // 수락 이메일 발송
+    sendBookingEmail(b, 'accepted');
   }
   renderAdminBookings();
   renderCalendar();
@@ -596,11 +612,39 @@ function acceptBooking(id) {
 
 function rejectBooking(id) {
   // 거절 시 완전히 삭제
+  const b = localBookings.find(x => x.id === id);
+  if (b) sendBookingEmail(b, 'rejected');
   localBookings = localBookings.filter(b => b.id !== id);
   if (supabaseClient) supabaseClient.from('bookings').delete().eq('id', id).then(({error}) => { if (error) console.error('rejectBooking error:', error.message); });
   renderAdminBookings();
   renderCalendar();
   showToast('❌ 예약을 거절(삭제)했어요');
+}
+
+// ─── EmailJS 발송 ─────────────────────────────────────────────────────────────
+function sendBookingEmail(booking, resultType) {
+  if (typeof emailjs === 'undefined' || EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY') return;
+  if (!booking.email) return;
+
+  const isAccepted = resultType === 'accepted';
+  const timesLabel = Array.isArray(booking.times) ? booking.times.join(', ') : (booking.time || '');
+
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+    name:    booking.name,
+    email:   booking.email,
+    date:    formatDisplayDate(booking.date),
+    times:   timesLabel,
+    type:    booking.type,
+    result:  isAccepted ? '✅ 수락되었어요!' : '❌ 거절되었어요',
+    message: isAccepted
+      ? '곧 만나요! 기대되는데요 😊'
+      : '다음에 다시 신청해주세요 🙏',
+  }).then(() => {
+    console.log('✅ 이메일 발송 성공:', booking.email);
+    showToast('📧 이메일 알림을 보냈어요!');
+  }).catch((err) => {
+    console.error('❌ 이메일 발송 실패:', err);
+  });
 }
 
 function changePassword() {
