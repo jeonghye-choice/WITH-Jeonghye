@@ -64,9 +64,7 @@ let selectedTimes = new Set();
 
 // ─── Supabase Backend ─────────────────────────────────────────────────────────
 const supabaseUrl = 'https://uzgnotuiqqnxjuskfwbc.supabase.co';
-// TODO: Replace with your actual anon key from Supabase Dashboard > Project Settings > API
-// It should start with 'eyJ...'
-const supabaseKey = 'sb_publishable_O8aDLALblRWIbX-fNrH4-A_fyqVlEWr';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV6Z25vdHVpcXFueGp1c2tmd2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxODU4MzksImV4cCI6MjA5Mjc2MTgzOX0.L-0NbKJv3bbc1GC6tt8taF2Egbhp-3RHhewQFEw2S8Y';
 
 let supabaseClient = null;
 try {
