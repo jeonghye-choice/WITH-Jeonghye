@@ -469,7 +469,16 @@ function addBusyDate() {
 
   const newRow = { date: dateVal, label };
   localBusyDates.push(newRow);
-  if (supabaseClient) supabaseClient.from('busy_dates').insert(newRow).then();
+  if (supabaseClient) {
+    supabaseClient.from('busy_dates').insert(newRow).then(({ error }) => {
+      if (error) {
+        console.error('❌ busy_dates insert error:', error.message, error.details, error.hint);
+        alert('저장 실패: ' + error.message);
+      } else {
+        console.log('✅ busy_dates saved:', dateVal);
+      }
+    });
+  }
   
   document.getElementById('busyDateInput').value = '';
   document.getElementById('busyLabelInput').value = '';
