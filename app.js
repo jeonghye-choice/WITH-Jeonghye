@@ -64,33 +64,55 @@ let selectedTimes = new Set();
 
 // ─── Supabase Backend ─────────────────────────────────────────────────────────
 const supabaseUrl = 'https://uzgnotuiqqnxjuskfwbc.supabase.co';
+// TODO: Replace with your actual anon key from Supabase Dashboard > Project Settings > API
+// It should start with 'eyJ...'
 const supabaseKey = 'sb_publishable_O8aDLALblRWIbX-fNrH4-A_fyqVlEWr';
-const supabase = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
+
+let supabaseClient = null;
+try {
+  if (window.supabase) {
+    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+    console.log('✅ Supabase client initialized');
+  } else {
+    console.warn('⚠️ Supabase SDK not loaded - running in offline mode.');
+  }
+} catch (e) {
+  console.error('Supabase init error:', e);
+}
 
 let localBusyDates = [];
 let localBusyRanges = [];
 let localBookings = [];
 
 async function fetchAllData() {
-  if (!supabase) return;
+  if (!supabaseClient) {
+    console.log('Supabase not connected — using local data only.');
+    return;
+  }
   try {
-    const fetchPromises = Promise.all([
-      supabase.from('busy_dates').select('*'),
-      supabase.from('busy_ranges').select('*'),
-      supabase.from('bookings').select('*')
-    ]);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 4000));
-    
-    const [bdRes, brRes, bkRes] = await Promise.race([fetchPromises, timeoutPromise]);
+    const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), ms));
 
-    if (bdRes && bdRes.data) localBusyDates = bdRes.data;
-    if (brRes && brRes.data) localBusyRanges = brRes.data.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, label: r.label }));
-    if (bkRes && bkRes.data) localBookings = bkRes.data.map(b => ({
-      ...b,
-      times: b.times
-    }));
+    const [bdRes, brRes, bkRes] = await Promise.race([
+      Promise.all([
+        supabaseClient.from('busy_dates').select('*'),
+        supabaseClient.from('busy_ranges').select('*'),
+        supabaseClient.from('bookings').select('*')
+      ]),
+      timeout(5000)
+    ]);
+
+    if (bdRes && !bdRes.error && bdRes.data) localBusyDates = bdRes.data;
+    else if (bdRes && bdRes.error) console.error('busy_dates fetch error:', bdRes.error.message);
+
+    if (brRes && !brRes.error && brRes.data) localBusyRanges = brRes.data.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, label: r.label }));
+    else if (brRes && brRes.error) console.error('busy_ranges fetch error:', brRes.error.message);
+
+    if (bkRes && !bkRes.error && bkRes.data) localBookings = bkRes.data.map(b => ({ ...b, times: b.times }));
+    else if (bkRes && bkRes.error) console.error('bookings fetch error:', bkRes.error.message);
+
+    console.log('📦 Fetched:', localBusyDates.length, 'busy dates,', localBusyRanges.length, 'ranges,', localBookings.length, 'bookings');
   } catch (err) {
-    console.error('Error fetching from DB:', err);
+    console.error('fetchAllData error (will render calendar anyway):', err.message);
   }
 }
 
@@ -322,7 +344,7 @@ function submitBooking() {
   };
 
   localBookings.push(booking);
-  if (supabase) supabase.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
+  if (supabaseClient) supabaseClient.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
 
   closeBookingModal();
   renderCalendar();
@@ -447,7 +469,7 @@ function addBusyDate() {
 
   const newRow = { date: dateVal, label };
   localBusyDates.push(newRow);
-  if (supabase) supabase.from('busy_dates').insert(newRow).then();
+  if (supabaseClient) supabaseClient.from('busy_dates').insert(newRow).then();
   
   document.getElementById('busyDateInput').value = '';
   document.getElementById('busyLabelInput').value = '';
@@ -466,7 +488,7 @@ function addBusyRange() {
 
   const id = Date.now().toString();
   localBusyRanges.push({ id, start, end, label });
-  if (supabase) supabase.from('busy_ranges').insert({ id, start_date: start, end_date: end, label }).then();
+  if (supabaseClient) supabaseClient.from('busy_ranges').insert({ id, start_date: start, end_date: end, label }).then();
   
   document.getElementById('busyRangeStart').value = '';
   document.getElementById('busyRangeEnd').value = '';
@@ -478,7 +500,7 @@ function addBusyRange() {
 
 function removeBusyRange(id) {
   localBusyRanges = localBusyRanges.filter(r => r.id !== id);
-  if (supabase) supabase.from('busy_ranges').delete().eq('id', id).then();
+  if (supabaseClient) supabaseClient.from('busy_ranges').delete().eq('id', id).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
@@ -486,7 +508,7 @@ function removeBusyRange(id) {
 
 function removeBusyDate(date) {
   localBusyDates = localBusyDates.filter(b => b.date !== date);
-  if (supabase) supabase.from('busy_dates').delete().eq('date', date).then();
+  if (supabaseClient) supabaseClient.from('busy_dates').delete().eq('date', date).then();
   renderBusyList();
   renderCalendar();
   showToast('삭제됐어요!');
@@ -546,7 +568,7 @@ function renderAdminBookings() {
 
 function removeBooking(id) {
   localBookings = localBookings.filter(b => b.id !== id);
-  if (supabase) supabase.from('bookings').delete().eq('id', id).then();
+  if (supabaseClient) supabaseClient.from('bookings').delete().eq('id', id).then(({error}) => { if (error) console.error('removeBooking error:', error.message); });
   renderAdminBookings();
   renderCalendar();
   showToast('일정이 삭제됐어요');
@@ -556,7 +578,7 @@ function acceptBooking(id) {
   const b = localBookings.find(x => x.id === id);
   if (b) {
     b.status = 'accepted';
-    if (supabase) supabase.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
+    if (supabaseClient) supabaseClient.from('bookings').update({ status: 'accepted' }).eq('id', id).then();
   }
   renderAdminBookings();
   renderCalendar();
@@ -566,7 +588,7 @@ function acceptBooking(id) {
 function rejectBooking(id) {
   // 거절 시 완전히 삭제
   localBookings = localBookings.filter(b => b.id !== id);
-  if (supabase) supabase.from('bookings').delete().eq('id', id).then();
+  if (supabaseClient) supabaseClient.from('bookings').delete().eq('id', id).then(({error}) => { if (error) console.error('rejectBooking error:', error.message); });
   renderAdminBookings();
   renderCalendar();
   showToast('❌ 예약을 거절(삭제)했어요');
@@ -584,16 +606,20 @@ function changePassword() {
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 async function initApp() {
+  console.log("initApp Started!");
   // Init current month
   const now = new Date();
   currentYear = now.getFullYear();
   currentMonth = now.getMonth();
 
+  console.log("Calling fetchAllData");
   // 최초 로딩 시 디비 긁어오기
   await fetchAllData();
+  console.log("Finished fetchAllData");
 
   try {
     renderCalendar();
+    console.log("Finished renderCalendar");
   } catch (e) {
     console.error('Render Calendar Error:', e);
   }
@@ -657,6 +683,134 @@ async function initApp() {
   document.getElementById('addBusyBtn').addEventListener('click', addBusyDate);
   document.getElementById('addBusyRangeBtn').addEventListener('click', addBusyRange);
   document.getElementById('changePwBtn').addEventListener('click', changePassword);
+
+  // ─── Realtime subscription ───────────────────────────────────────────────
+  setupRealtimeSubscription();
+}
+
+// ─── Browser Notification Permission ──────────────────────────────────────
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+}
+
+function sendBrowserNotification(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, {
+      body,
+      icon: 'https://cdn.jsdelivr.net/npm/twemoji@latest/svg/1f4c5.svg',
+    });
+  }
+}
+
+// ─── Supabase Realtime ────────────────────────────────────────────────────
+function setupRealtimeSubscription() {
+  if (!supabaseClient) return;
+
+  // Request browser notification permission
+  requestNotificationPermission();
+
+  supabaseClient
+    .channel('public:bookings')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'bookings' },
+      (payload) => {
+        const b = payload.new;
+        // avoid duplicate if this browser submitted it
+        if (localBookings.find(x => String(x.id) === String(b.id))) return;
+
+        localBookings.push({ ...b, times: b.times });
+        renderCalendar();
+        if (adminUnlocked) renderAdminContent();
+
+        const times = Array.isArray(b.times) ? b.times.join(', ') : (b.time || '');
+        const msg = `${b.name}님이 ${formatDisplayDate(b.date)} ${times} 예약을 신청했어요!`;
+
+        // In-app banner
+        showNewBookingBanner(b.name, formatDisplayDate(b.date), times, b.type);
+        // Browser notification
+        sendBrowserNotification('📅 새 약속 신청이 왔어요!', msg);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'bookings' },
+      (payload) => {
+        const deletedId = payload.old.id;
+        localBookings = localBookings.filter(b => String(b.id) !== String(deletedId));
+        renderCalendar();
+        if (adminUnlocked) renderAdminContent();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'bookings' },
+      (payload) => {
+        const updated = payload.new;
+        const idx = localBookings.findIndex(b => String(b.id) === String(updated.id));
+        if (idx !== -1) localBookings[idx] = { ...localBookings[idx], ...updated };
+        renderCalendar();
+        if (adminUnlocked) renderAdminContent();
+      }
+    )
+    .subscribe((status) => {
+      console.log('Realtime status:', status);
+    });
+}
+
+// ─── New Booking Banner ───────────────────────────────────────────────────
+function showNewBookingBanner(name, dateStr, times, type) {
+  // Remove existing banner if any
+  const existing = document.getElementById('newBookingBanner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'newBookingBanner';
+  banner.innerHTML = `
+    <div class="banner-icon">🎉</div>
+    <div class="banner-body">
+      <div class="banner-title">새 약속 신청이 왔어요!</div>
+      <div class="banner-desc">${name}님 · ${dateStr} · ${type}</div>
+    </div>
+    <button class="banner-close" onclick="this.parentElement.remove()">✕</button>
+  `;
+  banner.style.cssText = `
+    position: fixed; top: 20px; right: 20px; z-index: 9999;
+    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, #1C1C1E, #2C2C2E);
+    color: white; border-radius: 16px; padding: 14px 18px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    animation: slideInRight 0.4s cubic-bezier(0.16,1,0.3,1);
+    max-width: 320px; min-width: 260px;
+    border: 1px solid rgba(255,255,255,0.1);
+  `;
+  banner.querySelector('.banner-icon').style.cssText = 'font-size: 28px; flex-shrink: 0;';
+  banner.querySelector('.banner-title').style.cssText = 'font-weight: 700; font-size: 14px; margin-bottom: 2px;';
+  banner.querySelector('.banner-desc').style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.7);';
+  banner.querySelector('.banner-close').style.cssText = `
+    background: none; border: none; color: rgba(255,255,255,0.5);
+    cursor: pointer; font-size: 14px; padding: 4px; flex-shrink: 0;
+    margin-left: auto;
+  `;
+
+  // Add animation keyframe if not present
+  if (!document.getElementById('bannerStyle')) {
+    const style = document.createElement('style');
+    style.id = 'bannerStyle';
+    style.textContent = `
+      @keyframes slideInRight {
+        from { transform: translateX(120%); opacity: 0; }
+        to   { transform: translateX(0);   opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 8000);
 }
 
 if (document.readyState === 'loading') {
