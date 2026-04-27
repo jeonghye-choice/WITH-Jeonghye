@@ -386,6 +386,7 @@ function showToast(msg, isError = false) {
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 let adminUnlocked = false;
+let isAdminSession = false; // 로그인 후 세션 내내 유지
 
 function openAdminPanel() {
   adminUnlocked = false;
@@ -406,6 +407,7 @@ function tryAdminLogin() {
   const pw = document.getElementById('adminPwInput').value;
   if (pw === getPassword()) {
     adminUnlocked = true;
+    isAdminSession = true; // 세션 내 관리자 인증 유지
     document.getElementById('adminGate').classList.add('hidden');
     document.getElementById('adminContent').classList.remove('hidden');
     renderAdminContent();
@@ -729,10 +731,11 @@ function setupRealtimeSubscription() {
         const times = Array.isArray(b.times) ? b.times.join(', ') : (b.time || '');
         const msg = `${b.name}님이 ${formatDisplayDate(b.date)} ${times} 예약을 신청했어요!`;
 
-        // In-app banner
-        showNewBookingBanner(b.name, formatDisplayDate(b.date), times, b.type);
-        // Browser notification
-        sendBrowserNotification('📅 새 약속 신청이 왔어요!', msg);
+        // 관리자 로그인한 경우에만 알림 표시
+        if (isAdminSession) {
+          showNewBookingBanner(b.name, formatDisplayDate(b.date), times, b.type);
+          sendBrowserNotification('📅 새 약속 신청이 왔어요!', msg);
+        }
       }
     )
     .on(
