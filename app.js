@@ -170,6 +170,23 @@ function getLocalTodayStr() {
   return d.toISOString().split('T')[0];
 }
 
+function parseTimesInput(str) {
+  if (!str) return [];
+  // 범위 형식 처리 (예: 오후 1:30 ~ 오후 6:00)
+  if (str.includes('~')) {
+    const parts = str.split('~').map(s => s.trim());
+    if (parts.length === 2) {
+      const startIdx = TIME_SLOTS.indexOf(parts[0]);
+      const endIdx = TIME_SLOTS.indexOf(parts[1]);
+      if (startIdx !== -1 && endIdx !== -1 && startIdx <= endIdx) {
+        return TIME_SLOTS.slice(startIdx, endIdx + 1);
+      }
+    }
+  }
+  // 쉼표 구분 형식 처리
+  return str.split(',').map(t => t.trim()).filter(t => t);
+}
+
 function convertTo24Hour(timeStr) {
   if (!timeStr) return '';
   const [ampm, time] = timeStr.split(' ');
@@ -764,7 +781,8 @@ function submitEdit() {
 
   if (!dateStr || !timesStr) { showToast('날짜와 시간을 입력해주세요!', true); return; }
 
-  const timesArr = timesStr.split(',').map(t => t.trim()).filter(t => t);
+  const timesArr = parseTimesInput(timesStr);
+  if (timesArr.length === 0) { showToast('올바른 시간 형식이 아니에요!', true); return; }
   
   const b = localBookings.find(x => x.id === id);
   if (b) {
