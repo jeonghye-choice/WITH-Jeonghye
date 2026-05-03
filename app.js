@@ -164,6 +164,49 @@ function formatDisplayDate(str) {
   return `${d.getMonth()+1}월 ${d.getDate()}일 (${DAYS_KO[d.getDay()]})`;
 }
 
+function getLocalTodayStr() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().split('T')[0];
+}
+
+function convertTo24Hour(timeStr) {
+  if (!timeStr) return '';
+  const [ampm, time] = timeStr.split(' ');
+  let [h, m] = time.split(':').map(Number);
+  if (ampm === '오후' && h !== 12) h += 12;
+  if (ampm === '오전' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function formatTimesToRanges(timesArr) {
+  if (!timesArr || timesArr.length === 0) return '';
+  const validTimes = timesArr.filter(t => t);
+  if (validTimes.length === 0) return '';
+  
+  const sorted = [...validTimes].sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b));
+  const blocks = [];
+  let currentBlock = [sorted[0]];
+  
+  for (let i = 1; i < sorted.length; i++) {
+    const prevIdx = TIME_SLOTS.indexOf(sorted[i - 1]);
+    const currIdx = TIME_SLOTS.indexOf(sorted[i]);
+    
+    if (currIdx === prevIdx + 1) {
+      currentBlock.push(sorted[i]);
+    } else {
+      blocks.push(currentBlock);
+      currentBlock = [sorted[i]];
+    }
+  }
+  blocks.push(currentBlock);
+  
+  return blocks.map(block => {
+    if (block.length === 1) return convertTo24Hour(block[0]);
+    return `${convertTo24Hour(block[0])} ~ ${convertTo24Hour(block[block.length - 1])}`;
+  }).join(', ');
+}
+
 // ─── Calendar Rendering ───────────────────────────────────────────────────────
 function renderCalendar() {
   const grid = document.getElementById('calGrid');
@@ -356,7 +399,19 @@ function submitBooking() {
   };
 
   localBookings.push(booking);
-  if (supabaseClient) supabaseClient.from('bookings').insert(booking).then(({error}) => { if(error) console.error(error); });
+  if (supabaseClient) {
+    const dbBooking = {
+      id: booking.id,
+      date: booking.date,
+      times: booking.times,
+      type: booking.type,
+      name: booking.name,
+      note: booking.note,
+      status: booking.status,
+      createdat: booking.createdAt
+    };
+    supabaseClient.from('bookings').insert(dbBooking).then(({error}) => { if(error) console.error(error); });
+  }
 
   closeBookingModal();
   renderCalendar();
@@ -365,7 +420,7 @@ function submitBooking() {
 
 // ─── Success Modal ─────────────────────────────────────────────────────────────
 function openSuccessModal(booking) {
-  const timesLabel = booking.times.join(', ');
+  const timesLabel = Array.isArray(booking.times) ? formatTimesToRanges(booking.times) : formatTimesToRanges([booking.time]);
   document.getElementById('successDesc').textContent =
     `${booking.name}님의 약속 신청이 접수되었어요!`;
   document.getElementById('successDetail').innerHTML = `
@@ -399,6 +454,7 @@ function showToast(msg, isError = false) {
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 let adminUnlocked = false;
 let isAdminSession = false; // 로그인 후 세션 내내 유지
+let adminSelectedTimes = new Set(); // 관리자 바쁜 날 추가 시 시간 선택
 
 function openAdminPanel() {
   adminUnlocked = false;
@@ -436,8 +492,9 @@ function renderAdminContent() {
 
 function renderBusyList() {
   const list = document.getElementById('busyList');
-  const busy = getBusyDates();
-  const ranges = getBusyRanges();
+  const todayStr = getLocalTodayStr();
+  const busy = getBusyDates().filter(b => b.date >= todayStr);
+  const ranges = getBusyRanges().filter(r => r.end >= todayStr);
 
   if (busy.length === 0 && ranges.length === 0) {
     list.innerHTML = '<p class="empty-msg">등록된 바쁜 날이 없어요</p>';
@@ -477,28 +534,72 @@ function addBusyDate() {
 
   if (!dateVal) { showToast('날짜를 선택해주세요!', true); return; }
 
-  if (localBusyDates.find(b => b.date === dateVal)) {
-    showToast('이미 등록된 날이에요!', true); return;
-  }
+  // 시간이 선택되어 있다면 -> 예약 묶음(개인 일정)으로 처리
+  if (adminSelectedTimes.size > 0) {
+    const timesArr = [...adminSelectedTimes].sort((a, b) => TIME_SLOTS.indexOf(a) - TIME_SLOTS.indexOf(b));
+    const booking = {
+      id: Date.now(),
+      date: dateVal,
+      times: timesArr,
+      type: '기타',
+      name: '개인 일정',
+      email: '',
+      note: label || '개인 일정',
+      status: 'accepted',
+      createdAt: new Date().toISOString()
+    };
 
-  const newRow = { date: dateVal, label };
-  localBusyDates.push(newRow);
-  if (supabaseClient) {
-    supabaseClient.from('busy_dates').insert(newRow).then(({ error }) => {
-      if (error) {
-        console.error('❌ busy_dates insert error:', error.message, error.details, error.hint);
-        alert('저장 실패: ' + error.message);
-      } else {
-        console.log('✅ busy_dates saved:', dateVal);
-      }
-    });
+    localBookings.push(booking);
+    if (supabaseClient) {
+      const dbBooking = {
+        id: booking.id,
+        date: booking.date,
+        times: booking.times,
+        type: booking.type,
+        name: booking.name,
+        note: booking.note,
+        status: booking.status,
+        createdat: booking.createdAt
+      };
+      supabaseClient.from('bookings').insert(dbBooking).then();
+    }
+    
+    showToast('선택한 시간이 바쁜 시간으로 차단됐어요 🚫');
+  } else {
+    // 시간이 선택되어 있지 않다면 -> 하루 전체 바쁜 날로 처리
+    if (localBusyDates.find(b => b.date === dateVal)) {
+      showToast('이미 등록된 날이에요!', true); return;
+    }
+
+    const newRow = { date: dateVal, label };
+    localBusyDates.push(newRow);
+    if (supabaseClient) {
+      supabaseClient.from('busy_dates').insert(newRow).then(({ error }) => {
+        if (error) {
+          console.error('❌ busy_dates insert error:', error.message, error.details, error.hint);
+          alert('저장 실패: ' + error.message);
+        } else {
+          console.log('✅ busy_dates saved:', dateVal);
+        }
+      });
+    }
+    showToast('바쁜 날이 등록됐어요 📅');
   }
   
   document.getElementById('busyDateInput').value = '';
   document.getElementById('busyLabelInput').value = '';
+  adminSelectedTimes.clear();
+  const timeGrid = document.getElementById('adminTimeGrid');
+  const timeActions = document.getElementById('adminTimeActions');
+  if (timeGrid) {
+    timeGrid.classList.add('hidden');
+    timeGrid.innerHTML = '';
+  }
+  if (timeActions) timeActions.classList.add('hidden');
+  
+  renderAdminBookings();
   renderBusyList();
   renderCalendar();
-  showToast('바쁜 날이 등록됐어요 📅');
 }
 
 function addBusyRange() {
@@ -542,7 +643,7 @@ function renderBookingListHtml(bookings) {
     return '<p class="empty-msg">예약이 없어요 🥲</p>';
   }
   return bookings.map(b => {
-    const timesLabel = Array.isArray(b.times) ? b.times.join(', ') : (b.time || '');
+    const timesLabel = Array.isArray(b.times) ? formatTimesToRanges(b.times) : formatTimesToRanges([b.time]);
     const status = b.status || 'pending';
     const statusMap = {
       pending:  { label: '대기 중', cls: 'status-pending' },
@@ -569,7 +670,11 @@ function renderBookingListHtml(bookings) {
       <div class="booking-actions">
         <button class="action-btn accept-btn" onclick="acceptBooking(${b.id})">✅ 수락</button>
         <button class="action-btn reject-btn" onclick="rejectBooking(${b.id})">❌ 거절</button>
-      </div>` : ''}
+        <button class="action-btn" onclick="openEditModal(${b.id})">✏️ 수정</button>
+      </div>` : `
+      <div class="booking-actions" style="margin-top: 8px;">
+        <button class="action-btn" onclick="openEditModal(${b.id})">✏️ 수정</button>
+      </div>`}
     </div>
   `}).join('');
 }
@@ -578,10 +683,11 @@ function renderAdminBookings() {
   const pendingList = document.getElementById('adminBookingList');
   const confirmedList = document.getElementById('adminConfirmedList');
   
+  const todayStr = getLocalTodayStr();
   const bookings = getBookings().sort((a,b) => a.date.localeCompare(b.date));
 
-  const pendingBookings = bookings.filter(b => b.status === 'pending');
-  const confirmedBookings = bookings.filter(b => b.status === 'accepted');
+  const pendingBookings = bookings.filter(b => b.status === 'pending' && b.date >= todayStr);
+  const confirmedBookings = bookings.filter(b => b.status === 'accepted' && b.date >= todayStr);
 
   pendingList.innerHTML = renderBookingListHtml(pendingBookings);
   if (confirmedList) {
@@ -621,13 +727,135 @@ function rejectBooking(id) {
   showToast('❌ 예약을 거절(삭제)했어요');
 }
 
+// ─── Admin Edit & Time Block ──────────────────────────────────────────────────
+function openEditModal(id) {
+  const b = localBookings.find(x => x.id === id);
+  if (!b) return;
+  document.getElementById('editBookingId').value = b.id;
+  document.getElementById('editDateInput').value = b.date;
+  document.getElementById('editTimesInput').value = Array.isArray(b.times) ? b.times.join(', ') : (b.time || '');
+  
+  const typeSelect = document.getElementById('editTypeSelect');
+  if (Array.from(typeSelect.options).find(opt => opt.value === b.type)) {
+    typeSelect.value = b.type;
+  } else {
+    typeSelect.value = '기타';
+  }
+
+  document.getElementById('adminEditOverlay').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('adminEditOverlay').classList.add('hidden');
+}
+
+function submitEdit() {
+  const id = Number(document.getElementById('editBookingId').value);
+  const dateStr = document.getElementById('editDateInput').value;
+  const timesStr = document.getElementById('editTimesInput').value;
+  const typeStr = document.getElementById('editTypeSelect').value;
+
+  if (!dateStr || !timesStr) { showToast('날짜와 시간을 입력해주세요!', true); return; }
+
+  const timesArr = timesStr.split(',').map(t => t.trim()).filter(t => t);
+  
+  const b = localBookings.find(x => x.id === id);
+  if (b) {
+    b.date = dateStr;
+    b.times = timesArr;
+    b.type = typeStr;
+
+    if (supabaseClient) {
+      supabaseClient.from('bookings').update({ date: b.date, times: b.times, type: b.type }).eq('id', b.id).then();
+    }
+  }
+
+  closeEditModal();
+  renderAdminBookings();
+  renderCalendar();
+  showToast('예약이 수정되었어요 ✏️');
+}
+
+function renderAdminTimeGrid(dateStr) {
+  const timeGrid = document.getElementById('adminTimeGrid');
+  const timeActions = document.getElementById('adminTimeActions');
+  timeGrid.innerHTML = '';
+  if (!dateStr) {
+    timeGrid.classList.add('hidden');
+    if (timeActions) timeActions.classList.add('hidden');
+    return;
+  }
+
+  timeGrid.classList.remove('hidden');
+  if (timeActions) timeActions.classList.remove('hidden');
+  adminSelectedTimes.clear();
+
+  const bookings = getBookings().filter(b => b.date === dateStr);
+  const takenTimes = bookings
+    .filter(b => b.status !== 'rejected')
+    .flatMap(b => Array.isArray(b.times) ? b.times : [b.time]);
+
+  TIME_SLOTS.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'time-slot';
+    btn.textContent = t;
+    btn.dataset.idx = i;
+    // slightly smaller for admin panel
+    btn.style.padding = '8px 4px';
+    btn.style.fontSize = '12px';
+
+    if (takenTimes.includes(t)) {
+      btn.classList.add('taken');
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+    } else {
+      btn.addEventListener('click', () => {
+        if (adminSelectedTimes.has(t)) {
+          adminSelectedTimes.delete(t);
+          btn.classList.remove('active');
+        } else {
+          adminSelectedTimes.add(t);
+          btn.classList.add('active');
+        }
+      });
+    }
+    timeGrid.appendChild(btn);
+  });
+}
+
+function selectTimeRange(startIdx, endIdx) {
+  const buttons = document.querySelectorAll('#adminTimeGrid .time-slot');
+  for (let i = startIdx; i <= endIdx; i++) {
+    const btn = Array.from(buttons).find(b => parseInt(b.dataset.idx) === i);
+    const t = TIME_SLOTS[i];
+    if (btn && !btn.classList.contains('taken')) {
+      adminSelectedTimes.add(t);
+      btn.classList.add('active');
+    }
+  }
+}
+
+function applyTimeRange() {
+  const start = document.getElementById('timeRangeStart').value;
+  const end = document.getElementById('timeRangeEnd').value;
+  if (!start || !end) return;
+  
+  const startIdx = TIME_SLOTS.indexOf(start);
+  const endIdx = TIME_SLOTS.indexOf(end);
+  if (startIdx > endIdx) {
+    showToast('시작 시간이 종료 시간보다 늦을 수 없어요!', true);
+    return;
+  }
+  selectTimeRange(startIdx, endIdx);
+}
+
 // ─── EmailJS 발송 ─────────────────────────────────────────────────────────────
 function sendBookingEmail(booking, resultType) {
   if (typeof emailjs === 'undefined' || EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY') return;
   if (!booking.email) return;
 
   const isAccepted = resultType === 'accepted';
-  const timesLabel = Array.isArray(booking.times) ? booking.times.join(', ') : (booking.time || '');
+  const timesLabel = Array.isArray(booking.times) ? formatTimesToRanges(booking.times) : formatTimesToRanges([booking.time]);
 
   emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
     name:    booking.name,
@@ -734,8 +962,53 @@ async function initApp() {
     if (e.key === 'Enter') tryAdminLogin();
   });
   document.getElementById('addBusyBtn').addEventListener('click', addBusyDate);
+  const busyDateInput = document.getElementById('busyDateInput');
+  busyDateInput.addEventListener('change', (e) => renderAdminTimeGrid(e.target.value));
+  busyDateInput.addEventListener('input', (e) => renderAdminTimeGrid(e.target.value));
   document.getElementById('addBusyRangeBtn').addEventListener('click', addBusyRange);
   document.getElementById('changePwBtn').addEventListener('click', changePassword);
+  
+  // Quick Time Selectors
+  const startSel = document.getElementById('timeRangeStart');
+  const endSel = document.getElementById('timeRangeEnd');
+  if (startSel && endSel) {
+    TIME_SLOTS.forEach(t => {
+      const opt1 = document.createElement('option'); opt1.value = t; opt1.textContent = t;
+      startSel.appendChild(opt1);
+      const opt2 = document.createElement('option'); opt2.value = t; opt2.textContent = t;
+      endSel.appendChild(opt2);
+    });
+  }
+
+  document.getElementById('timeRangeApplyBtn').addEventListener('click', applyTimeRange);
+  document.getElementById('qsMorning').addEventListener('click', () => selectTimeRange(0, 5));     // 09:00 - 11:30
+  document.getElementById('qsAfternoon').addEventListener('click', () => selectTimeRange(6, 17));  // 12:00 - 17:30
+  document.getElementById('qsEvening').addEventListener('click', () => selectTimeRange(18, 27));   // 18:00 - 22:30
+  document.getElementById('qsAll').addEventListener('click', () => selectTimeRange(0, 27));
+  document.getElementById('qsClear').addEventListener('click', () => {
+    adminSelectedTimes.clear();
+    document.querySelectorAll('#adminTimeGrid .time-slot:not(.taken)').forEach(btn => btn.classList.remove('active'));
+  });
+
+  if(document.getElementById('adminEditCloseBtn')) {
+    document.getElementById('adminEditCloseBtn').addEventListener('click', closeEditModal);
+    document.getElementById('submitEditBtn').addEventListener('click', submitEdit);
+    document.getElementById('adminEditOverlay').addEventListener('click', e => {
+      if (e.target === document.getElementById('adminEditOverlay')) closeEditModal();
+    });
+  }
+
+  // Admin Tabs
+  document.querySelectorAll('.admin-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+      
+      tab.classList.add('active');
+      const targetId = tab.getAttribute('data-tab');
+      document.getElementById(targetId).classList.add('active');
+    });
+  });
 
   // ─── Realtime subscription ───────────────────────────────────────────────
   setupRealtimeSubscription();
@@ -779,12 +1052,12 @@ function setupRealtimeSubscription() {
         renderCalendar();
         if (adminUnlocked) renderAdminContent();
 
-        const times = Array.isArray(b.times) ? b.times.join(', ') : (b.time || '');
-        const msg = `${b.name}님이 ${formatDisplayDate(b.date)} ${times} 예약을 신청했어요!`;
+        const timesLabel = Array.isArray(b.times) ? formatTimesToRanges(b.times) : formatTimesToRanges([b.time]);
+        const msg = `${b.name}님이 ${formatDisplayDate(b.date)} ${timesLabel} 예약을 신청했어요!`;
 
         // 관리자 로그인한 경우에만 알림 표시
         if (isAdminSession) {
-          showNewBookingBanner(b.name, formatDisplayDate(b.date), times, b.type);
+          showNewBookingBanner(b.name, formatDisplayDate(b.date), timesLabel, b.type);
           sendBrowserNotification('📅 새 약속 신청이 왔어요!', msg);
         }
       }

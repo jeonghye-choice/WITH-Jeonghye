@@ -662,6 +662,41 @@ body {
 .admin-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
 .admin-error { color: var(--accent); font-size: 13px; margin-top: 8px; }
 
+/* Admin Tabs (Segmented Control) */
+.admin-tabs {
+  display: flex;
+  background: #E5E5EA;
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 24px;
+}
+.admin-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.admin-tab.active {
+  background: white;
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.admin-tab-content {
+  display: none;
+  animation: fadeIn 0.2s ease;
+}
+.admin-tab-content.active {
+  display: block;
+}
+
 .admin-section { margin-bottom: 24px; }
 
 .busy-add-row {

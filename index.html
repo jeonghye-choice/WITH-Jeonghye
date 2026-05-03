@@ -5,9 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WITH Jeonghye 📅</title>
   <meta name="description" content="Jeonghye와 약속을 잡아보세요. 가능한 날짜를 선택하고 원하는 약속 유형을 골라드려요." />
+  
+  <!-- Open Graph (KakaoTalk Thumbnail) -->
+  <meta property="og:title" content="WITH Jeonghye 📅" />
+  <meta property="og:description" content="Jeonghye와 약속을 잡아보세요! 가능한 날짜와 시간을 선택할 수 있어요." />
+  <meta property="og:image" content="https://cdn.jsdelivr.net/gh/twitter/twemoji@master/assets/72x72/1f4c5.png" />
+  <meta property="og:type" content="website" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
@@ -178,44 +185,85 @@
 
       <!-- Admin Content -->
       <div id="adminContent" class="hidden">
+        
+        <!-- Tabs -->
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-tab="tab-bookings">예약 관리</button>
+          <button class="admin-tab" data-tab="tab-schedule">일정 차단</button>
+          <button class="admin-tab" data-tab="tab-settings">설정</button>
+        </div>
 
-        <!-- Change Password -->
-        <div class="admin-section">
-          <div class="section-label">바쁜 날 추가 (단일)</div>
-          <div class="busy-add-row">
-            <input class="text-input flex1" id="busyDateInput" type="date" />
-            <input class="text-input flex1" id="busyLabelInput" type="text" placeholder="메모 (선택)" maxlength="30" />
-            <button class="add-btn" id="addBusyBtn">추가</button>
+        <!-- Tab 1: Bookings -->
+        <div class="admin-tab-content active" id="tab-bookings">
+          <div class="admin-section">
+            <div class="section-label">대기 중인 예약</div>
+            <div class="booking-list" id="adminBookingList"></div>
           </div>
-          <div class="section-label" style="margin-top:14px;">바쁜 날 추가 (범위)</div>
-          <div class="busy-add-row">
-            <input class="text-input flex1" id="busyRangeStart" type="date" />
-            <span style="color:var(--text-muted);font-size:13px;white-space:nowrap;">~</span>
-            <input class="text-input flex1" id="busyRangeEnd" type="date" />
-            <input class="text-input flex1" id="busyRangeLabel" type="text" placeholder="메모 (선택)" maxlength="30" />
-            <button class="add-btn" id="addBusyRangeBtn">추가</button>
+          <div class="admin-section">
+            <div class="section-label">확정된 일정</div>
+            <div class="booking-list" id="adminConfirmedList"></div>
           </div>
-          <div class="busy-list" id="busyList"></div>
         </div>
 
-        <!-- Bookings -->
-        <div class="admin-section">
-          <div class="section-label">대기 중인 예약</div>
-          <div class="booking-list" id="adminBookingList"></div>
+        <!-- Tab 2: Schedule -->
+        <div class="admin-tab-content" id="tab-schedule">
+          <div class="admin-section">
+            <div class="section-label">바쁜 날 추가 (단일)</div>
+            <div class="busy-add-row">
+              <input class="text-input flex1" id="busyDateInput" type="date" />
+              <input class="text-input flex1" id="busyLabelInput" type="text" placeholder="메모 (선택)" maxlength="30" />
+              <button class="add-btn" id="addBusyBtn">추가</button>
+            </div>
+            
+            <!-- Quick Time Selectors -->
+            <div id="adminTimeActions" class="hidden" style="margin-top: 12px; background: rgba(255,255,255,0.5); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">빠른 시간 선택</div>
+              
+              <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 10px;">
+                <select class="text-input flex1" id="timeRangeStart" style="padding: 8px; font-size: 13px;">
+                  <option value="">시작</option>
+                </select>
+                <span style="color: var(--text-muted);">~</span>
+                <select class="text-input flex1" id="timeRangeEnd" style="padding: 8px; font-size: 13px;">
+                  <option value="">종료</option>
+                </select>
+                <button class="add-btn" id="timeRangeApplyBtn" style="padding: 8px 12px; font-size: 12px;">적용</button>
+              </div>
+              
+              <div style="display: flex; gap: 6px;">
+                <button class="admin-btn flex1" id="qsMorning" style="padding: 6px 0;">오전</button>
+                <button class="admin-btn flex1" id="qsAfternoon" style="padding: 6px 0;">오후</button>
+                <button class="admin-btn flex1" id="qsEvening" style="padding: 6px 0;">저녁</button>
+                <button class="admin-btn flex1" id="qsAll" style="padding: 6px 0; background: #E5E5EA;">전체</button>
+                <button class="admin-btn flex1" id="qsClear" style="padding: 6px 0; background: #E5E5EA;">해제</button>
+              </div>
+            </div>
+
+            <div class="time-grid hidden" id="adminTimeGrid" style="margin-top: 10px; max-height: 200px; overflow-y: auto; padding: 4px;"></div>
+            <p class="admin-desc" style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">
+              * 특정 시간만 선택하거나, 아무것도 선택하지 않으면 하루 전체가 바쁜 날로 등록됩니다.
+            </p>
+
+            <div class="section-label" style="margin-top:24px;">바쁜 날 추가 (범위)</div>
+            <div class="busy-add-row">
+              <input class="text-input flex1" id="busyRangeStart" type="date" />
+              <span style="color:var(--text-muted);font-size:13px;white-space:nowrap;">~</span>
+              <input class="text-input flex1" id="busyRangeEnd" type="date" />
+              <input class="text-input flex1" id="busyRangeLabel" type="text" placeholder="메모 (선택)" maxlength="30" />
+              <button class="add-btn" id="addBusyRangeBtn">추가</button>
+            </div>
+            <div class="busy-list" id="busyList"></div>
+          </div>
         </div>
 
-        <!-- Confirmed -->
-        <div class="admin-section">
-          <div class="section-label">확정된 일정</div>
-          <div class="booking-list" id="adminConfirmedList"></div>
-        </div>
-
-        <!-- PW Change -->
-        <div class="admin-section">
-          <div class="section-label">비밀번호 변경</div>
-          <div class="busy-add-row">
-            <input class="text-input flex1" id="newPwInput" type="password" placeholder="새 비밀번호" />
-            <button class="add-btn" id="changePwBtn">변경</button>
+        <!-- Tab 3: Settings -->
+        <div class="admin-tab-content" id="tab-settings">
+          <div class="admin-section">
+            <div class="section-label">비밀번호 변경</div>
+            <div class="busy-add-row">
+              <input class="text-input flex1" id="newPwInput" type="password" placeholder="새 비밀번호" />
+              <button class="add-btn" id="changePwBtn">변경</button>
+            </div>
           </div>
         </div>
 
@@ -223,6 +271,32 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Admin Edit Modal -->
+  <div class="modal-overlay hidden" id="adminEditOverlay" style="z-index: 10000;">
+    <div class="modal" id="adminEditModal">
+      <button class="modal-close" id="adminEditCloseBtn">✕</button>
+      <h2 class="modal-title">예약 수정</h2>
+      
+      <div class="section-label">날짜</div>
+      <input class="text-input" id="editDateInput" type="date" />
+      
+      <div class="section-label">시간 (쉼표로 구분)</div>
+      <input class="text-input" id="editTimesInput" type="text" placeholder="예: 오전 10:00, 오후 2:00" />
+      
+      <div class="section-label">종류</div>
+      <select class="text-input" id="editTypeSelect">
+        <option value="술약속">술약속</option>
+        <option value="데이트">데이트</option>
+        <option value="밥 약속">밥 약속</option>
+        <option value="카페">카페</option>
+        <option value="기타">기타 / 개인 일정</option>
+      </select>
+      
+      <input type="hidden" id="editBookingId" />
+      <button class="submit-btn" id="submitEditBtn" style="margin-top: 20px;">수정 저장하기</button>
+    </div>
+  </div>
+
+  <script src="app.js?v=3"></script>
 </body>
 </html>
