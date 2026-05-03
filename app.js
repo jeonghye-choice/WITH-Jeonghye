@@ -231,10 +231,14 @@ function renderCalendar() {
   });
   // 단순 점 표시: 예약이 있는 날
   const datesWithBooking = new Set(Object.keys(nonRejectedByDate));
-  // 완치 마감: 모든 슬롯이 찼은 날
+  // 완치 마감: 모든 슬롯이 찼거나 1시간 미만(슬롯 1개 이하)으로 남은 날
   const fullyBookedDates = new Set(
     Object.entries(nonRejectedByDate)
-      .filter(([, times]) => TIME_SLOTS.every(t => times.includes(t)))
+      .filter(([, times]) => {
+        const uniqueTimes = new Set(times);
+        const availableCount = TIME_SLOTS.length - uniqueTimes.size;
+        return availableCount <= 1; // 0개 또는 1개(30분)만 남은 경우 마감으로 간주
+      })
       .map(([date]) => date)
   );
 
