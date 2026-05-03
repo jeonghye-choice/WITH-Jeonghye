@@ -666,10 +666,10 @@ function renderBookingListHtml(bookings) {
         <button class="delete-btn" style="margin-left:auto;" onclick="removeBooking(${b.id})">🗑️</button>
       </div>
       <div class="booking-meta">
-        <span class="booking-name">👤 ${b.name}</span>
+        ${b.name === '개인 일정' ? '' : `<span class="booking-name">👤 ${b.name}</span>`}
         <span class="booking-status ${s.cls}">${s.label}</span>
       </div>
-      ${b.note ? `<span class="booking-note">💬 ${b.note}</span>` : ''}
+      ${(b.note && b.note !== '개인 일정') ? `<span class="booking-note">💬 ${b.note}</span>` : ''}
       ${status === 'pending' ? `
       <div class="booking-actions">
         <button class="action-btn accept-btn" onclick="acceptBooking(${b.id})">✅ 수락</button>
