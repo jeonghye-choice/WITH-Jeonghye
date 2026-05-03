@@ -745,6 +745,8 @@ function openEditModal(id) {
   } else {
     typeSelect.value = '기타';
   }
+  
+  document.getElementById('editNoteInput').value = b.note || '';
 
   document.getElementById('adminEditOverlay').classList.remove('hidden');
 }
@@ -758,6 +760,7 @@ function submitEdit() {
   const dateStr = document.getElementById('editDateInput').value;
   const timesStr = document.getElementById('editTimesInput').value;
   const typeStr = document.getElementById('editTypeSelect').value;
+  const noteStr = document.getElementById('editNoteInput').value;
 
   if (!dateStr || !timesStr) { showToast('날짜와 시간을 입력해주세요!', true); return; }
 
@@ -768,9 +771,10 @@ function submitEdit() {
     b.date = dateStr;
     b.times = timesArr;
     b.type = typeStr;
+    b.note = noteStr;
 
     if (supabaseClient) {
-      supabaseClient.from('bookings').update({ date: b.date, times: b.times, type: b.type }).eq('id', b.id).then();
+      supabaseClient.from('bookings').update({ date: b.date, times: b.times, type: b.type, note: b.note }).eq('id', b.id).then();
     }
   }
 
